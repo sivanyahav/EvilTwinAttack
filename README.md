@@ -38,7 +38,7 @@ Requierement
 Linux operating system with two network interfaces, so that both can enter monitor mode.
 Python 2.7 and above, apachy2, php, hostapd, dnsmasq
 
-### Part Two:Defense
+### Part Two:Defence
 the defence levels protection will be:
 
 1.  take from the user the name of interface he is using.
