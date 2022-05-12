@@ -1,7 +1,7 @@
 
 # EvilTwinAttack
 
-### Submitses Group No. 14:
+### submitters- Group No. 14:
 	Sivan Yahav     314805235
 	Koral Elbaz     318477684
 	Yoel Chemla     315674481
