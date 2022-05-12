@@ -127,7 +127,7 @@ def start_apache():
     # update rules inside 000-default.conf of apache2
     os.system('sudo cp -f 000-default.conf /etc/apache2/sites-enabled')
     os.system('a2enmod rewrite >/dev/null 2>&1')  # enable the mod_rewrite in apache
-    os.system('a2enmod php' + str(8.1) + ' >/dev/null 2>&1')  # enable php7.4 module in apache
+    os.system('a2enmod php' + str(8.1) + ' >/dev/null 2>&1')  # enable php8.1 module in apache
     os.system('sudo systemctl restart apache2 >/dev/null 2>&1')
 
 
