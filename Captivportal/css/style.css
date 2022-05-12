@@ -1,0 +1,60 @@
+body
+{
+    margin: 0;
+    padding: 0;
+    background-color:#FFA07A;
+    font-family: 'Copperplate';
+}
+.login{
+        width: 500px;
+        height: 200px;
+        overflow: hidden;
+        margin: auto;
+        margin: 20 0 0 450px;
+        padding: 80px;
+        background: grey;
+        border-radius: 30px ;
+        background-image: url('img/background.jpg');
+        background-size: 670px;
+
+}
+h2{
+    text-align: center;
+    color: black;
+    padding: 20px;
+}
+label{
+    color: white;
+    font-size: 17px;
+}
+#user{
+    width: 300px;
+    height: 30px;
+    border: none;
+    border-radius: 3px;
+    padding-left: 8px;
+}
+#pass{
+    width: 300px;
+    height: 30px;
+    border: none;
+    border-radius: 3px;
+    padding-left: 8px;
+
+}
+#login{
+    width: 300px;
+    height: 100px;
+    border: none;
+    border-radius: 17px;
+    padding-left: 7px;
+    color: blue;
+}
+span{
+    color: white;
+    font-size: 17px;
+}
+a{
+    float: right;
+    background-color: grey;
+}
