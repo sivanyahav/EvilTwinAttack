@@ -44,8 +44,7 @@ def change_to_monitor_mode(interface):
 
 def network_scanning():
     """
-    this function check if there is ap who send a lot
-    of Deauthentication packets in 60 seconds , if so, it means we are under attack.
+    this function check if there are two differents mac with same SSID
     """
     sniff(iface=interface, stop_filter=packet_handler, timeout=60)
 
