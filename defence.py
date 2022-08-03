@@ -23,8 +23,9 @@ ap_list = []
 ssid_list = []
 interface = ""
 ssid = ""
-ap_mac = ""
-attacked_mac=""
+real_ap_mac = ""
+client_mac=""
+attacker_mac =""
 evil = ""
 attacked = False
 count = 0
@@ -50,24 +51,24 @@ def network_scanning():
 
 
 def packet_handler(packet):
-    global ap_list, ssid_list, ap_mac, evil
+    global ap_list, ssid_list, evil, real_ap_mac, attacker_mac
     # if the packet type 802.11
     if packet.haslayer(Dot11) and packet.type == 0 and packet.subtype == 8:
         if packet.addr2 is not None:
-            if packet.addr2 not in ap_list:
+            if packet.info.decode("utf-8") not in ssid_list:
                 ap_list.append(packet.addr2)  # addr2 - source mac address of sender
                 ssid_list.append(packet.info.decode("utf-8"))
             else:
                 for i in range(len(ssid_list)):
-                    if packet.info.decode("utf-8") == ssid_list[i]:
-                        evil = ssid_list[i]
-                        ap_mac = ap_list[i]
-                        break
-                if ap_mac == packet.addr2:
-                    print("\nExist Evil Twin AP, might be under attack !! ")
-                    evil = ssid_list[i]
-                    time.sleep(1)
-                    return True
+                        real_ap_mac = ap_list[i]
+
+                        if real_ap_mac != packet.addr2:
+                            print("\nExist Twin AP, might be under attack !! ")
+                            evil = ssid_list[i]
+                            attacker_mac = packet.addr2
+                            time.sleep(1)
+                            return True
+            return False
 
 
 def deauth(interface):
@@ -86,18 +87,18 @@ def deauth_handler(packet):
     addr3- AP MAC
     addr2- Source mac
     """
-    global ap_mac, attacked, attacked_mac, count, first
+    global attacked, count, first, real_ap_mac, client_mac
     # if the packet type 802.11 frame deauth
     if packet.haslayer(Dot11) and packet.type == 0 and packet.subtype == 12:
         if packet.addr2 is not None and packet.addr3 is not None:
-            if str(packet.addr3) == ap_mac:  # first time we saw this AP mac
+            if str(packet.addr3) == real_ap_mac:  # first time we saw this AP mac
                 count += 1  # Updating the number of time we've seen this AP mac
                 if count > 40 and first:  # if we saw more than 60 packets we might be under attack.
                     attacked = True
                     first = False
                     print("\nYou under attack!!")
                     time.sleep(1)
-                    attacked_mac = str(packet.addr1)
+                    client_mac = str(packet.addr1)
                     return True
 
 
@@ -149,7 +150,7 @@ def defence_main(interface):
 
             # ----------- STEP 4 - Disconnect the attacker -----------
             if attacked:
-                atack_thread = threading.Thread(target=attack_attacker, args=(ap_mac, attacked_mac, interface),
+                atack_thread = threading.Thread(target=attack_attacker, args=(attacker_mac, client_mac, interface),
                                                 daemon=True)
                 atack_thread.start()
 

